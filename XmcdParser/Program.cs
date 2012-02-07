@@ -2,6 +2,7 @@
 using System.IO;
 using System.Linq;
 using System.Text;
+using Raven.Client.Document;
 
 namespace XmcdParser
 {
@@ -9,26 +10,51 @@ namespace XmcdParser
 	{
 		static void Main()
 		{
-			int i = 0;
-			var parser = new Parser();
-			foreach (var directory in Directory.GetDirectories(@"D:\Data\freedb-complete-20120101"))
+			using (var store = new DocumentStore
 			{
-				foreach (var file in Directory.EnumerateFiles(directory))
+				Url = "http://localhost:8080"
+			}.Initialize())
+			{
+				var session = store.OpenSession();
+				int count = 0;
+				Action<Disk> addToBatch = diskToAdd =>
 				{
-					try
+					session.Store(diskToAdd);
+					count += 1;
+					if (count%512 == 0)
 					{
-						var disk = parser.Parse(file);
-						if(i++ % 1000 == 0)
-							Console.Write("\r{0} {1}", file, i);
+						session.SaveChanges();
+						session = store.OpenSession();
+						count = 0;
 					}
-					catch (Exception e)
+				};
+
+				int i = 0;
+				var parser = new Parser();
+				var start = @"D:\Data\freedb-complete-20120101\rock\42124f16";
+				foreach (var directory in Directory.GetDirectories(@"D:\Data\freedb-complete-20120101"))
+				{
+					foreach (var file in Directory.EnumerateFiles(directory))
 					{
-						Console.WriteLine();
-						Console.WriteLine(file);
-						Console.WriteLine(e);
-						return;
-					}				
+						if (file.CompareTo(start) < 0)
+							continue;
+						try
+						{
+							var disk = parser.Parse(file);
+							addToBatch(disk);
+							if (i++ % 1000 == 0)
+								Console.Write("\r{0} {1:#,#}           ", file, i);
+						}
+						catch (Exception e)
+						{
+							Console.WriteLine();
+							Console.WriteLine(file);
+							Console.WriteLine(e);
+							return;
+						}
+					}
 				}
+				session.SaveChanges();
 			}
 		}
 	}

@@ -4,183 +4,115 @@
 // // </copyright>
 // //-----------------------------------------------------------------------
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 
 namespace XmcdParser
 {
 	public class Parser
 	{
+		readonly List<Tuple<Regex,Action<Disk, MatchCollection>>> actions = new List<Tuple<Regex, Action<Disk, MatchCollection>>>();
+
+		public Parser()
+		{
+			Add(@"^\#\s+xmcd", (disk, collection) =>
+			{
+				if (collection.Count == 0)
+					throw new InvalidDataException("Not an XMCD file");
+			});
+
+			Add(@"\# \s* (\d+)", (disk, collection) => 
+				disk.TrackFramesOffsets.Add(int.Parse(collection[0].Groups[1].Value)));
+
+			Add(@"Disc \s+ length \s*: \s* (\d+)", (disk, collection) =>
+			                                                  disk.DiskLength = int.Parse(collection[0].Groups[1].Value)
+				);
+
+			Add("DISCID=(.+)", (disk, collection) =>
+			                   disk.DiskIds.AddRange(collection[0].Groups[1].Value.Split(new[] {","},
+			                                                                             StringSplitOptions.RemoveEmptyEntries)));
+
+			Add("DTITLE=(.+)", (disk, collection) =>
+			{
+				var parts = collection[0].Groups[1].Value.Split(new[] {"/"}, 2, StringSplitOptions.RemoveEmptyEntries);
+				if (parts.Length == 2)
+				{
+					disk.Artist = parts[0];
+					disk.Title = parts[1];
+				}
+				else
+				{
+					disk.Title = parts[0];
+				}
+			});
+
+			Add(@"DYEAR=(\d+)", (disk, collection) =>
+			{
+				if (collection.Count == 0)
+					return;
+				var value = collection[0].Groups[1].Value;
+				if(value.Length > 4) // there is data like this
+				{
+					value = value.Substring(value.Length - 4);
+				}
+				disk.Year = int.Parse(value);
+			}
+			);
+
+			Add(@"DGENRE=(.+)", (disk, collection) =>
+			{
+				if (collection.Count == 0)
+					return;
+				disk.Genre = collection[0].Groups[1].Value;
+			}
+			);
+
+			Add(@"TTITLE\d+=(.+)", (disk, collection) =>
+			{
+				foreach (Match match in collection)
+				{
+					disk.Tracks.Add(match.Groups[1].Value);
+				}	
+			});
+
+			Add(@"(EXTD\d*)=(.+)", (disk, collection) =>
+			{
+				foreach (Match match in collection)
+				{
+					disk.Attributes[match.Groups[1].Value] = match.Groups[2].Value;
+				}
+			});
+		}
+
+		private void Add(string regex, Action<Disk, MatchCollection> action)
+		{
+			var key = new Regex(regex, RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace);
+			actions.Add(Tuple.Create(key, action));
+		}
+
 		public Disk Parse(string file)
 		{
 			var disk = new Disk();
-			State state = new InitialState();
-
-			state.ChangeState = newState =>
+			var text = File.ReadAllText(file);
+			foreach (var action in actions)
 			{
-				newState.ChangeState = state.ChangeState;
-				newState.Disk = disk;
-				state = newState;
-			};
-
-			foreach (var line in File.ReadLines(file))
-			{
+				var collection = action.Item1.Matches(text);
 				try
 				{
-					state.ReadLine(line);
+					action.Item2(disk, collection);
 				}
 				catch (Exception e)
 				{
-					throw new InvalidDataException("Could not parse: " + line, e);
+					Console.WriteLine();
+					Console.WriteLine(file);
+					Console.WriteLine(action.Item1);
+					Console.WriteLine(e);
+					throw;
 				}
 			}
 
 			return disk;
 		}
-
-		#region Nested type: DiskLengthState
-
-		public class DiskLengthState : State
-		{
-			public override void ReadLine(string line)
-			{
-				var indexOf = line.IndexOf("Disc length:", StringComparison.InvariantCultureIgnoreCase);
-				if (indexOf != -1)
-				{
-					var start = indexOf + "Disc length: ".Length;
-					var trimmed = line.Substring(start).Trim();
-					var end = trimmed.IndexOf(" ");
-					string len = end != -1 ? trimmed.Substring(0, end) : trimmed;
-					try
-					{
-						Disk.DiskLength = int.Parse(len);
-					}
-					catch (Exception e)
-					{
-						throw;
-					}
-					ChangeState(new ReadDiskInformationState());
-				}
-			}
-		}
-
-		#endregion
-
-		#region Nested type: InitialState
-
-		public class InitialState : State
-		{
-			public override void ReadLine(string line)
-			{
-				if (line.IndexOf("xmcd", StringComparison.InvariantCultureIgnoreCase) == -1)
-					throw new InvalidDataException("Not a valid XMCD file");
-
-				ChangeState(new TrackFrameOffsetState());
-			}
-		}
-
-		#endregion
-
-		#region Nested type: ReadDiskInformationState
-
-		public class ReadDiskInformationState : State
-		{
-			public override void ReadLine(string line)
-			{
-				if (line.StartsWith("#"))
-					return;
-
-				var split = line.Split(new[] {"="}, 2, StringSplitOptions.RemoveEmptyEntries);
-				if (split.Length != 2)
-					return;
-
-				var name = split[0];
-				var value = split[1].Trim();
-				if (value.Length == 0)
-					return;
-
-				switch (name.ToUpperInvariant())
-				{
-					case "DISCID":
-						Disk.DiskIds.AddRange(value.Split(new[] {','}, StringSplitOptions.RemoveEmptyEntries));
-						break;
-					case "DTITLE":
-						var parts = value.Split(new[] {'/'}, 2, StringSplitOptions.RemoveEmptyEntries);
-						if(parts.Length == 2)
-						{
-							Disk.Artist = parts[0].Trim();
-							Disk.Title = parts[1].Trim();
-						}
-						else
-						{
-							Disk.Title = value;
-						}
-						break;
-					case "DYEAR":
-						Disk.Year = int.Parse(value);
-						break;
-					case "DGENRE":
-						Disk.Genre = value;
-						break;
-					default:
-						if (name.StartsWith("TTITLE"))
-						{
-							Disk.Tracks.Add(value);
-						}
-						else
-						{
-							Disk.Attributes[name] = value;
-						}
-						break;
-				}
-			}
-		}
-
-		#endregion
-
-		#region Nested type: State
-
-		public abstract class State
-		{
-			public Action<State> ChangeState { get; set; }
-
-			public Disk Disk { get; set; }
-
-			public abstract void ReadLine(string line);
-		}
-
-		#endregion
-
-		#region Nested type: TrackFrameOffsetState
-
-		public class TrackFrameOffsetState : State
-		{
-			private bool readingLengths;
-
-			public override void ReadLine(string line)
-			{
-				if (readingLengths)
-				{
-					var trim = line.Substring(1).Trim();
-					
-					int result;
-					if (int.TryParse(trim, out result) == false)
-					{
-						var diskLengthState = new DiskLengthState();
-						ChangeState(diskLengthState);
-						diskLengthState.ReadLine(line);
-						return;
-					}
-					Disk.TrackFramesOffsets.Add(result);
-					return;
-				}
-
-				if (line.IndexOf("Track frame offsets:", StringComparison.InvariantCultureIgnoreCase) == -1)
-					return;
-
-				readingLengths = true;
-			}
-		}
-
-		#endregion
 	}
 }
