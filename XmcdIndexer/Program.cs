@@ -7,6 +7,7 @@ using Lucene.Net.Index;
 using Lucene.Net.Store;
 using XmcdParser;
 using Directory = System.IO.Directory;
+using System.Linq;
 
 namespace XmcdIndexer
 {
@@ -60,11 +61,26 @@ namespace XmcdIndexer
 			_indexWriter.Close(true);
 		}
 
+		static readonly Field[] fields = new[]
+		{
+			new Field("artist", "a", Field.Store.NO, Field.Index.ANALYZED_NO_NORMS),
+			new Field("title", "a", Field.Store.NO, Field.Index.ANALYZED_NO_NORMS),
+			new Field("__document_id", "a", Field.Store.YES, Field.Index.NOT_ANALYZED_NO_NORMS)
+	};
+
 		private static void AddDocShortVersion(Disk disk)
 		{
 			ReusableDoc.GetFields().Clear();
-			ReusableDoc.Add(new Field("artist", disk.Artist, Field.Store.NO, Field.Index.ANALYZED_NO_NORMS));
-			ReusableDoc.Add(new Field("title", disk.Title, Field.Store.NO, Field.Index.ANALYZED_NO_NORMS));
+
+			fields[0].SetValue(disk.Artist);
+			ReusableDoc.Add(fields[0]);
+
+			fields[1].SetValue(disk.Title);
+			ReusableDoc.Add(fields[1]);
+
+			fields[2].SetValue(disk.DiskIds.FirstOrDefault() ?? Guid.NewGuid().ToString());
+			ReusableDoc.Add(fields[2]);
+
 			_indexWriter.AddDocument(ReusableDoc);
 		}
 	}
