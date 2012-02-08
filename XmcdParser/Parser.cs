@@ -22,8 +22,13 @@ namespace XmcdParser
 					throw new InvalidDataException("Not an XMCD file");
 			});
 
-			Add(@"\# \s* (\d+)", (disk, collection) => 
-				disk.TrackFramesOffsets.Add(int.Parse(collection[0].Groups[1].Value)));
+			Add(@"^\# \s* Track \s+ frame \s+ offsets \s*: \s* \n (^\# \s* (\d+) \s* \n)+", (disk, collection) =>
+			{
+				foreach (Capture capture in collection[0].Groups[2].Captures)
+				{
+					disk.TrackFramesOffsets.Add(int.Parse(capture.Value));
+				}
+			});
 
 			Add(@"Disc \s+ length \s*: \s* (\d+)", (disk, collection) =>
 			                                                  disk.DiskLength = int.Parse(collection[0].Groups[1].Value)
@@ -87,7 +92,7 @@ namespace XmcdParser
 
 		private void Add(string regex, Action<Disk, MatchCollection> action)
 		{
-			var key = new Regex(regex, RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace);
+			var key = new Regex(regex, RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.IgnorePatternWhitespace|RegexOptions.Multiline);
 			actions.Add(Tuple.Create(key, action));
 		}
 
