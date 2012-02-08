@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
+using System.Linq;
 
 namespace XmcdParser
 {
@@ -35,20 +36,23 @@ namespace XmcdParser
 				);
 
 			Add("DISCID=(.+)", (disk, collection) =>
-			                   disk.DiskIds.AddRange(collection[0].Groups[1].Value.Split(new[] {","},
-			                                                                             StringSplitOptions.RemoveEmptyEntries)));
+			{
+				var strings = collection[0].Groups[1].Value.Split(new[] {","},
+				                                                  StringSplitOptions.RemoveEmptyEntries);
+				disk.DiskIds.AddRange(strings.Select(x=>x.Trim()));
+			});
 
 			Add("DTITLE=(.+)", (disk, collection) =>
 			{
 				var parts = collection[0].Groups[1].Value.Split(new[] {"/"}, 2, StringSplitOptions.RemoveEmptyEntries);
 				if (parts.Length == 2)
 				{
-					disk.Artist = parts[0];
-					disk.Title = parts[1];
+					disk.Artist = parts[0].Trim();
+					disk.Title = parts[1].Trim();
 				}
 				else
 				{
-					disk.Title = parts[0];
+					disk.Title = parts[0].Trim();
 				}
 			});
 
@@ -69,7 +73,7 @@ namespace XmcdParser
 			{
 				if (collection.Count == 0)
 					return;
-				disk.Genre = collection[0].Groups[1].Value;
+				disk.Genre = collection[0].Groups[1].Value.Trim();
 			}
 			);
 
@@ -77,7 +81,7 @@ namespace XmcdParser
 			{
 				foreach (Match match in collection)
 				{
-					disk.Tracks.Add(match.Groups[1].Value);
+					disk.Tracks.Add(match.Groups[1].Value.Trim());
 				}	
 			});
 
@@ -85,7 +89,7 @@ namespace XmcdParser
 			{
 				foreach (Match match in collection)
 				{
-					disk.Attributes[match.Groups[1].Value] = match.Groups[2].Value;
+					disk.Attributes[match.Groups[1].Value] = match.Groups[2].Value.Trim();
 				}
 			});
 		}
