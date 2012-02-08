@@ -89,7 +89,16 @@ namespace XmcdParser
 			{
 				foreach (Match match in collection)
 				{
-					disk.Attributes[match.Groups[1].Value] = match.Groups[2].Value.Trim();
+					var key = match.Groups[1].Value;
+					string value;
+					if (disk.Attributes.TryGetValue(key, out value))
+					{
+						disk.Attributes[key] = value + match.Groups[2].Value.Trim();
+					}
+					else
+					{
+						disk.Attributes[key] = match.Groups[2].Value.Trim();
+					}
 				}
 			});
 		}
@@ -100,10 +109,9 @@ namespace XmcdParser
 			actions.Add(Tuple.Create(key, action));
 		}
 
-		public Disk Parse(string file)
+		public Disk Parse(string text)
 		{
 			var disk = new Disk();
-			var text = File.ReadAllText(file);
 			foreach (var action in actions)
 			{
 				var collection = action.Item1.Matches(text);
@@ -114,7 +122,7 @@ namespace XmcdParser
 				catch (Exception e)
 				{
 					Console.WriteLine();
-					Console.WriteLine(file);
+					Console.WriteLine(text);
 					Console.WriteLine(action.Item1);
 					Console.WriteLine(e);
 					throw;
