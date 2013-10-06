@@ -14,41 +14,29 @@ namespace XmcdParser
 		{
 			using (var store = new DocumentStore
 			{
-				Url = "https://2.ravenhq.com/databases/ayende-freedb",
-				ApiKey = "2cdd2658-1181-4d67-b15e-7adcc48c461a"
+				Url = "http://localhost:8080",
+				DefaultDatabase = "freedb"
 			}.Initialize())
 			{
-				var session = store.OpenSession();
-				var count = 0;
-
-				var sp = ParseDisks(diskToAdd =>
-				{
-					session.Store(diskToAdd);
-					count += 1;
-					if (count < BatchSize) 
-						return;
-
-					session.SaveChanges();
-					session = store.OpenSession();
-					count = 0;
-				});
-
-				session.SaveChanges();
+			    var sp = Stopwatch.StartNew();
+                using (var insert = store.BulkInsert())
+                {
+                    insert.Report += Console.WriteLine;
+                    ParseDisks(insert);
+                }
 
 				Console.WriteLine();
 				Console.WriteLine("Done in {0}", sp.Elapsed);
 			}
 		}
 
-		private static Stopwatch ParseDisks(Action<Disk> addToBatch)
+		private static void ParseDisks(BulkInsertOperation insert)
 		{
 			int i = 0;
 			var parser = new Parser();
 			var buffer = new byte[1024*1024];// more than big enough for all files
 
-			var sp = Stopwatch.StartNew();
-
-			using (var bz2 = new BZip2InputStream(File.Open(@"D:\Data\freedb-complete-20120101.tar.bz2", FileMode.Open)))
+            using (var bz2 = new BZip2InputStream(File.Open(@"C:\Users\Ayende\Downloads\freedb-complete-20130901.tar.bz2", FileMode.Open)))
 			using (var tar = new TarInputStream(bz2))
 			{
 				TarEntry entry;
@@ -71,20 +59,16 @@ namespace XmcdParser
 					try
 					{
 						var disk = parser.Parse(fileText);
-						addToBatch(disk);
-						if (i++ % BatchSize == 0)
-							Console.Write("\r{0} {1:#,#}  {2}         ", entry.Name, i, sp.Elapsed);
+						insert.Store(disk);
 					}
 					catch (Exception e)
 					{
 						Console.WriteLine();
 						Console.WriteLine(entry.Name);
 						Console.WriteLine(e);
-						return sp;
 					}
 				}
 			}
-			return sp;
 		}
 	}
 }
