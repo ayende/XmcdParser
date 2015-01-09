@@ -4,6 +4,7 @@ using System.IO;
 using ICSharpCode.SharpZipLib.BZip2;
 using ICSharpCode.SharpZipLib.Tar;
 using Raven.Client.Document;
+using System.Threading;
 
 namespace XmcdParser
 {
@@ -12,11 +13,11 @@ namespace XmcdParser
 		private const int BatchSize = 24;
 		static void Main()
 		{
-			using (var store = new DocumentStore
+            using (var store = new DocumentStore
 			{
-				Url = "http://localhost:9999",
-				DefaultDatabase = "freedb"
-			}.Initialize())
+				Url = "http://localhost:8080",
+				DefaultDatabase = "freedb",               
+			}.Initialize(true))
 			{
 			    var sp = Stopwatch.StartNew();
                 using (var insert = store.BulkInsert())
@@ -25,9 +26,14 @@ namespace XmcdParser
                     ParseDisks(insert);
                 }
 
+                while (store.DatabaseCommands.GetStatistics().StaleIndexes.Length != 0)
+                    Thread.Sleep(500);
+
 				Console.WriteLine();
 				Console.WriteLine("Done in {0}", sp.Elapsed);
 			}
+
+            Console.ReadLine();
 		}
 
 		private static void ParseDisks(BulkInsertOperation insert)
@@ -36,7 +42,7 @@ namespace XmcdParser
 			var parser = new Parser();
 			var buffer = new byte[1024*1024];// more than big enough for all files
 
-            using (var bz2 = new BZip2InputStream(File.Open(@"C:\Users\Ayende\Downloads\freedb-complete-20130901.tar.bz2", FileMode.Open)))
+            using (var bz2 = new BZip2InputStream(File.Open(@"D:\Scratch\freedb-complete-20150101.tar.bz2", FileMode.Open)))
 			using (var tar = new TarInputStream(bz2))
 			{
 				TarEntry entry;
@@ -44,7 +50,8 @@ namespace XmcdParser
 				{
 					if(entry.Size == 0 || entry.Name == "README" || entry.Name == "COPYING")
 						continue;
-					var readSoFar = 0;
+					
+                    var readSoFar = 0;
 					while(true)
 					{
 						var read = tar.Read(buffer, readSoFar, ((int) entry.Size) - readSoFar);

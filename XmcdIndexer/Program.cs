@@ -10,7 +10,6 @@ using Lucene.Net.Documents;
 using Lucene.Net.Index;
 using Lucene.Net.Store;
 using XmcdParser;
-using Directory = System.IO.Directory;
 using System.Linq;
 
 namespace XmcdIndexer
@@ -25,9 +24,7 @@ namespace XmcdIndexer
 
 		static void Main()
 		{
-			_indexWriter = new IndexWriter(FSDirectory.Open(new DirectoryInfo(_indexPath)), new StandardAnalyzer(), true,
-			                               IndexWriter.MaxFieldLength.UNLIMITED);
-			_indexWriter.SetUseCompoundFile(false);
+			_indexWriter = new IndexWriter(FSDirectory.Open(new DirectoryInfo(_indexPath)), new StandardAnalyzer(Lucene.Net.Util.Version.LUCENE_30), true, IndexWriter.MaxFieldLength.UNLIMITED);			
 
 			// TODO: we can do this in batches, and trigger another thread to do that
 			var sw = ParseDisks(disk => disks.Add(disk)); 
@@ -42,7 +39,6 @@ namespace XmcdIndexer
 			}
 
 
-			_indexWriter.SetUseCompoundFile(true);
 			_indexWriter.Optimize();
 			_indexWriter.Close(true);
 
